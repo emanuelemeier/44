@@ -56,6 +56,20 @@ $totalAdults   = count($yes) + array_sum(array_map(fn($r) => $r['adults']   ?? 0
 $totalChildren = array_sum(array_map(fn($r) => $r['children'] ?? 0, $yes));
 $totalHeads    = $totalAdults + $totalChildren;
 $bringingSomething = array_filter($responses, fn($r) => !empty($r['bringing']));
+
+// Group bringing items for round-robin display
+$bringingCounts = [];
+foreach ($responses as $r) {
+    if (!empty($r['bringing'])) {
+        $items = array_filter(array_map('trim', explode(',', $r['bringing'])));
+        foreach ($items as $item) {
+            $key = mb_strtolower($item);
+            $bringingCounts[$key] = ($bringingCounts[$key] ?? 0) + 1;
+        }
+    }
+}
+arsort($bringingCounts);
+$maxBringing = $bringingCounts ? max($bringingCounts) : 1;
 ?>
 <!DOCTYPE html>
 <html lang="it">
@@ -412,6 +426,85 @@ footer a:hover { text-decoration: underline; }
 @keyframes beer-bob {
   from { transform: translateY(0) rotate(-5deg); }
   to   { transform: translateY(-8px) rotate(5deg); }
+}
+
+/* ===== BRINGING STATUS (form) ===== */
+.bringing-status {
+  display: flex; flex-wrap: wrap; gap: .4rem;
+  margin-bottom: .65rem; align-items: center;
+}
+.bringing-status-label {
+  font-size: .75rem; font-weight: 700; color: #aaa;
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.bringing-tag {
+  display: inline-flex; align-items: center; gap: .2rem;
+  background: #e8f5e9; color: #2d5a1b;
+  border: 1.5px solid #c8e6c9; border-radius: 2em;
+  padding: .2em .8em; font-size: .78rem; font-weight: 700;
+  transition: transform .15s;
+}
+.bringing-tag:hover { transform: scale(1.06); }
+
+/* ===== BRINGING CHART ===== */
+.bringing-chart {
+  background: var(--card); border-radius: 20px;
+  padding: 1.5rem 1.8rem;
+  box-shadow: 0 6px 28px var(--shadow);
+  border: 2px solid #e8f0d8;
+  display: flex; flex-direction: column; gap: .75rem;
+}
+.chart-row {
+  display: grid; grid-template-columns: 140px 1fr;
+  align-items: center; gap: 1rem;
+}
+.chart-label {
+  font-weight: 700; font-size: .88rem; color: var(--forest);
+  text-align: right; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.chart-track {
+  background: #f0f4e8; border-radius: 2em;
+  height: 40px; overflow: hidden; position: relative;
+}
+.chart-bar {
+  height: 100%; width: 0;
+  border-radius: 2em;
+  display: flex; align-items: center; justify-content: flex-end;
+  padding-right: .9rem;
+  transition: width 1.1s cubic-bezier(.25,.8,.25,1);
+  position: relative; overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0,0,0,.18);
+}
+.chart-bar::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(0,0,0,.12) 0%, transparent 60%);
+}
+.chart-bar::after {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 45%;
+  background: rgba(255,255,255,.22); border-radius: 2em 2em 0 0;
+}
+.chart-count {
+  font-family: 'Bebas Neue', sans-serif; font-size: 1.15rem;
+  color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.35);
+  position: relative; z-index: 1; letter-spacing: .06em;
+}
+.chart-shimmer {
+  position: absolute; top: 0; left: -60%; width: 40%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.3), transparent);
+  animation: shimmer 2.4s infinite;
+  z-index: 2;
+}
+@keyframes shimmer {
+  0%   { left: -60%; }
+  100% { left: 120%; }
+}
+
+@media (max-width: 540px) {
+  .chart-row { grid-template-columns: 100px 1fr; gap: .6rem; }
+  .chart-label { font-size: .78rem; }
 }
 
 @media (max-width: 540px) {
@@ -900,8 +993,23 @@ footer a:hover { text-decoration: underline; }
 
       <div class="form-row">
         <label for="bringing">Porti qualcosa? <span class="optional">(opzionale)</span></label>
-        <input type="text" id="bringing" name="bringing" placeholder="es: insalata di riso, pane, dolce..."
+        <?php if (!empty($bringingCounts)): ?>
+        <div class="bringing-status">
+          <span class="bringing-status-label">Già confermato:</span>
+          <?php foreach ($bringingCounts as $item => $count): ?>
+            <span class="bringing-tag">🥗 <?= htmlspecialchars($item) ?> ×<?= $count ?></span>
+          <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+        <input type="text" id="bringing" name="bringing"
+               list="bringing-suggestions"
+               placeholder="es: insalata di riso, vino, dolce (separati da virgola)"
                value="<?= $success ? '' : htmlspecialchars($_POST['bringing'] ?? '') ?>">
+        <datalist id="bringing-suggestions">
+          <?php foreach (array_keys($bringingCounts) as $item): ?>
+            <option value="<?= htmlspecialchars($item) ?>">
+          <?php endforeach; ?>
+        </datalist>
       </div>
 
       <div class="form-row">
@@ -912,6 +1020,32 @@ footer a:hover { text-decoration: underline; }
       <button type="submit" class="btn-submit">&#x26F0;&#xFE0F; Invia risposta</button>
     </form>
   </div>
+
+  <!-- BRINGING CHART -->
+  <?php if (!empty($bringingCounts)): ?>
+  <div class="section-title">&#x1F96A; Cosa portano</div>
+  <div class="bringing-chart" id="bringing-chart">
+    <?php
+    $chartColors = ['#2d5a1b','#d4881e','#2c59b8','#e05c1a','#6b2fb8','#c0392b','#1e8bc3','#4a7c3f'];
+    $ci = 0;
+    foreach ($bringingCounts as $item => $count):
+        $pct  = round(($count / $maxBringing) * 100);
+        $pct  = max($pct, 12); // min width so label is visible
+        $col  = $chartColors[$ci % count($chartColors)];
+        $ci++;
+    ?>
+    <div class="chart-row" data-pct="<?= $pct ?>">
+      <div class="chart-label"><?= htmlspecialchars($item) ?></div>
+      <div class="chart-track">
+        <div class="chart-bar" style="background: linear-gradient(90deg, <?= $col ?>, <?= $col ?>cc);">
+          <div class="chart-shimmer"></div>
+          <span class="chart-count">×<?= $count ?></span>
+        </div>
+      </div>
+    </div>
+    <?php endforeach; ?>
+  </div>
+  <?php endif; ?>
 
   <!-- GUEST LIST -->
   <div class="section-title" id="lista">&#x1F465; Chi c'&egrave;</div>
@@ -1047,6 +1181,25 @@ setTimeout(confetti, 1200);
 <?php if ($error): ?>
 document.getElementById('rsvp')?.scrollIntoView({behavior:'smooth', block:'start'});
 <?php endif; ?>
+
+// Animate bringing chart bars on scroll
+(function() {
+  const chart = document.getElementById('bringing-chart');
+  if (!chart) return;
+  const rows = chart.querySelectorAll('.chart-row');
+  const observer = new IntersectionObserver(entries => {
+    if (!entries[0].isIntersecting) return;
+    rows.forEach((row, i) => {
+      const bar = row.querySelector('.chart-bar');
+      if (!bar) return;
+      setTimeout(() => {
+        bar.style.width = row.dataset.pct + '%';
+      }, i * 130);
+    });
+    observer.disconnect();
+  }, { threshold: 0.25 });
+  observer.observe(chart);
+})();
 </script>
 
 <style>
