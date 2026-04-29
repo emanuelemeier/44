@@ -1,8 +1,9 @@
 FROM php:8.2-apache
 
-# Enable mod_rewrite (needed for .htaccess)
-RUN a2enmod rewrite
-RUN a2dismod mpm_event mpm_worker 2>/dev/null; a2enmod mpm_prefork
+# Fix MPM conflict and enable rewrite
+RUN a2dismod mpm_event mpm_worker mpm_prefork 2>/dev/null || true \
+    && a2enmod mpm_prefork \
+    && a2enmod rewrite
 
 # Allow .htaccess overrides
 RUN sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf
