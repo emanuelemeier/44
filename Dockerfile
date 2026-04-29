@@ -1,17 +1,15 @@
 FROM php:8.2-apache
 
-# Fix MPM conflict: disable all MPMs, enable prefork only
+RUN echo "FORCE RAILWAY REBUILD - MPM FIX ACTIVE"
+
 RUN a2dismod mpm_event mpm_worker mpm_prefork || true \
     && a2enmod mpm_prefork rewrite \
     && apache2ctl -M | grep mpm
 
-# Allow .htaccess overrides
 RUN sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf
 
-# Copy site files
 COPY . /var/www/html/
 
-# Ensure data dir exists and is writable
 RUN mkdir -p /var/www/html/data \
     && chown -R www-data:www-data /var/www/html/data \
     && chmod 755 /var/www/html/data
