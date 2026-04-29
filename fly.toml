@@ -1,0 +1,24 @@
+# fly.toml — generated for Birthday Vertical Challenge
+# Run: fly launch (first time) or fly deploy (updates)
+
+app = "bvc-birthday"   # change to your preferred app name (must be unique on fly.io)
+primary_region = "mia" # closest to Italy: fra (Frankfurt) or cdg (Paris)
+
+[build]
+
+[http_service]
+  internal_port = 80
+  force_https   = true
+  auto_stop_machines  = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+# Persistent volume for the data/ directory (keeps RSVPs across deploys)
+[mounts]
+  source      = "bbq_data"
+  destination = "/var/www/html/data"
