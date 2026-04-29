@@ -24,7 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['password'])) {
 }
 
 // Delete entry
-if ($_SESSION['admin'] && isset($_GET['delete'])) {
+if (($_SESSION['admin'] ?? false) && isset($_GET['delete'])) {
     $responses = [];
     if (file_exists($dataFile)) {
         $responses = json_decode(file_get_contents($dataFile), true) ?: [];
