@@ -12,11 +12,13 @@ $success = false; $error = ''; $myName = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'rsvp') {
     $myName   = htmlspecialchars(trim($_POST['name']     ?? ''), ENT_QUOTES);
     $coming   = $_POST['coming']   ?? '';
-    $climbs   = max(0, min(11, intval($_POST['climbs']   ?? 0)));
+    $climbs   = max(0, min(6, intval($_POST['climbs']   ?? 0)));
     $adults   = max(0, min(9,  intval($_POST['adults']   ?? 0)));
     $children = max(0, min(9,  intval($_POST['children'] ?? 0)));
     $bringing = htmlspecialchars(trim($_POST['bringing'] ?? ''), ENT_QUOTES);
     $notes    = htmlspecialchars(trim($_POST['notes']    ?? ''), ENT_QUOTES);
+    $rawSlots = array_map('intval', (array)($_POST['slots'] ?? []));
+    $slots    = array_values(array_filter($rawSlots, fn($s) => $s >= 1 && $s <= 6));
 
     if ($myName === '') {
         $error = 'Inserisci il tuo nome!';
@@ -38,6 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'rsvp'
                 'children'  => $children,
                 'bringing'  => $bringing,
                 'notes'     => $notes,
+                'slots'     => ($coming === 'si' && $climbs > 0) ? $slots : [],
                 'timestamp' => date('Y-m-d H:i:s'),
             ];
             file_put_contents($dataFile, json_encode($responses, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
@@ -56,6 +59,15 @@ $totalAdults   = count($yes) + array_sum(array_map(fn($r) => $r['adults']   ?? 0
 $totalChildren = array_sum(array_map(fn($r) => $r['children'] ?? 0, $yes));
 $totalHeads    = $totalAdults + $totalChildren;
 $bringingSomething = array_filter($responses, fn($r) => !empty($r['bringing']));
+
+// Runners per slot
+$slotRoster = [];
+foreach ($cfg['climb_slots'] as $sid => $slot) $slotRoster[$sid] = [];
+foreach ($yes as $r) {
+    foreach (($r['slots'] ?? []) as $sid) {
+        if (isset($slotRoster[$sid])) $slotRoster[$sid][] = $r['name'];
+    }
+}
 
 // Group bringing items for round-robin display
 $bringingCounts = [];
@@ -178,6 +190,18 @@ body { font-family: 'Nunito', sans-serif; background: var(--cream); color: #2a1a
   justify-content: center;
   animation: slide-up .7s ease-out .6s both;
   pointer-events: auto;
+}
+.hero-note {
+  margin-top: 1rem;
+  background: rgba(249,178,52,.22);
+  border: 1px solid rgba(249,178,52,.6);
+  color: #fff;
+  border-radius: 1em;
+  padding: .55em 1.2em;
+  font-size: .82rem;
+  font-weight: 700;
+  text-shadow: 0 1px 3px rgba(0,0,0,.5);
+  text-align: center;
 }
 .pill {
   display: flex;
@@ -370,6 +394,31 @@ textarea { resize: vertical; min-height: 70px; }
 .alert { border-radius: 12px; padding: 1rem 1.3rem; margin-bottom: 1.2rem; font-weight: 700; }
 .alert-success { background: #d4f5c8; border: 2px solid var(--light); color: var(--forest); }
 .alert-error   { background: #fde8e8; border: 2px solid #e57373; color: #b71c1c; }
+.alert-warn    { background: #fff3cd; border: 2px solid #f5a623; color: #7d4e00; }
+#slots-row { display: none; }
+.slots-grid { display: flex; flex-direction: column; gap: .5rem; margin-top: .4rem; }
+.slot-opt { display: flex; align-items: center; gap: .7rem; }
+.slot-opt input[type=checkbox] { display: none; }
+.slot-opt label {
+  display: flex; align-items: center; gap: .8rem;
+  padding: .5rem .9rem; border-radius: .8rem; border: 2px solid #ddd;
+  background: #fff; cursor: pointer; font-weight: 700; font-size: .85rem;
+  transition: all .18s; width: 100%;
+}
+.slot-opt label:hover { border-color: var(--mid); transform: translateX(3px); }
+.slot-opt input:checked + label { background: var(--forest); color: var(--sun); border-color: var(--forest); }
+.slot-opt input:checked + label .slot-time { color: var(--light); }
+.slot-time { font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem; min-width: 3.2rem; }
+.slot-arrive { font-size: .75rem; font-weight: 600; color: #999; margin-left: auto; }
+.slot-opt input:checked + label .slot-arrive { color: var(--light); }
+.slot-riders { font-size: .72rem; font-weight: 700; color: var(--mid); }
+/* Schedule section */
+.schedule-slots { display: flex; flex-direction: column; gap: .6rem; margin-top: .5rem; }
+.schedule-slot { display: flex; align-items: center; gap: .8rem; background: var(--card); border-radius: .8rem; padding: .6rem 1rem; border: 1.5px solid #e8e0d0; }
+.schedule-slot-time { font-family: 'Bebas Neue', sans-serif; font-size: 1.15rem; color: var(--forest); min-width: 3.5rem; }
+.schedule-slot-names { font-size: .82rem; font-weight: 700; color: #444; flex: 1; }
+.schedule-slot-names em { color: #bbb; font-style: normal; font-weight: 400; }
+.schedule-slot-count { background: var(--forest); color: var(--sun); border-radius: 2em; padding: .15em .6em; font-size: .75rem; font-weight: 800; }
 
 /* ===== GUEST LIST ===== */
 .guest-list { display: flex; flex-direction: column; gap: .85rem; }
@@ -583,6 +632,10 @@ footer a:hover { text-decoration: underline; }
   </linearGradient>
   <!-- Blur filter for distant mountains -->
   <filter id="fBlur"><feGaussianBlur stdDeviation="1.2"/></filter>
+  <!-- Clip for runner face photo -->
+  <clipPath id="face-clip">
+    <circle cx="0" cy="-28" r="14"/>
+  </clipPath>
 </defs>
 
 <!-- SKY (night → dawn → day, one-shot 9s) -->
@@ -768,13 +821,54 @@ footer a:hover { text-decoration: underline; }
   <circle cy="-40" r="6.5" fill="#555" stroke="#333" stroke-width="2"/>
   <line x1="-15" y1="-34" x2="-11" y2="-16" stroke="#888" stroke-width="2.5" stroke-linecap="round"/>
   <line x1=" 15" y1="-34" x2=" 11" y2="-16" stroke="#888" stroke-width="2.5" stroke-linecap="round"/>
-  <rect x="-19" y="-16" width="38" height="30" rx="5" fill="#c84412" stroke="#a03410" stroke-width="2"/>
+  <rect x="-19" y="-16" width="38" height="30" rx="5" fill="#ffd740" stroke="#e8a800" stroke-width="2"/>
   <rect x="-15" y="-12" width="12" height="10" rx="2" fill="rgba(200,235,255,.88)" stroke="#aad" stroke-width=".5"/>
   <rect x=" 3"  y="-12" width="12" height="10" rx="2" fill="rgba(200,235,255,.88)" stroke="#aad" stroke-width=".5"/>
-  <rect x="-19" y="10"  width="38" height="4"  rx="0" fill="#8a2e0a" opacity=".6"/>
+  <rect x="-19" y="10"  width="38" height="4"  rx="0" fill="#c8900a" opacity=".6"/>
 </g>
 
-<!-- RUNNER (travels up the slope) -->
+<!-- RUNNERS: persone iscritte alle salite -->
+<?php
+$runnerColors = ['#2196f3','#4caf50','#ff9800','#9c27b0','#f44336','#00bcd4','#ff5722','#795548'];
+$runnerList   = array_values(array_filter($yes, fn($r) => $r['climbs'] > 0));
+$numR         = min(count($runnerList), 8);
+$cycleDur     = 9;
+// small y-offsets so figures don't perfectly overlap
+$yOffsets     = [0, -7, 7, -14, 14, -5, 5, -10];
+foreach (array_slice($runnerList, 0, $numR) as $i => $r):
+    $col    = $runnerColors[$i % count($runnerColors)];
+    $ini    = htmlspecialchars(mb_strtoupper(mb_substr($r['name'], 0, 1)));
+    $begin  = round(($i / $numR) * $cycleDur, 2) . 's';
+    $yo     = $yOffsets[$i] ?? 0;
+    $p      = "M435," . (575+$yo) . " C555," . (522+$yo) . " 678," . (465+$yo) . " 800," . (402+$yo) . " C875," . (362+$yo) . " 940," . (326+$yo) . " 990," . (292+$yo);
+?>
+<g opacity=".92">
+  <animateMotion path="<?= $p ?>"
+    dur="<?= $cycleDur ?>s" begin="<?= $begin ?>" repeatCount="indefinite"
+    keyTimes="0;0.44;0.5;0.94;1" keyPoints="0;1;1;0;0"
+    calcMode="spline" keySplines="0.42 0 0.58 1;0 0 1 1;0.42 0 0.58 1;0 0 1 1"/>
+  <!-- Head with initial -->
+  <circle cy="-20" r="7" fill="<?= $col ?>"/>
+  <text x="0" y="-20" text-anchor="middle" dominant-baseline="central"
+        font-size="6.5" fill="#fff" font-weight="800" font-family="Nunito,sans-serif"><?= $ini ?></text>
+  <!-- Body -->
+  <rect x="-4" y="-13" width="8" height="11" rx="2" fill="<?= $col ?>"/>
+  <!-- Arms -->
+  <g>
+    <animate attributeName="transform" values="rotate(0);rotate(20);rotate(-20);rotate(0)" dur=".42s" repeatCount="indefinite"/>
+    <line x1="-4" y1="-9" x2="-10" y2="-3" stroke="<?= $col ?>" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1=" 4" y1="-9" x2=" 10" y2="-3" stroke="<?= $col ?>" stroke-width="2.5" stroke-linecap="round"/>
+  </g>
+  <!-- Legs -->
+  <g>
+    <animate attributeName="transform" values="rotate(0);rotate(-22);rotate(22);rotate(0)" dur=".42s" repeatCount="indefinite"/>
+    <line x1="-3" y1="-2" x2="-6" y2="7"  stroke="#1a237e" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1=" 3" y1="-2" x2=" 6" y2="7"  stroke="#1a237e" stroke-width="2.5" stroke-linecap="round"/>
+  </g>
+</g>
+<?php endforeach; ?>
+
+<!-- RUNNER WITH CRUTCHES (5 salite, adduttori ko) -->
 <g>
   <animateMotion path="M435,575 C555,522 678,465 800,402 C875,362 940,326 990,292"
     dur="9s" repeatCount="indefinite"
@@ -782,21 +876,48 @@ footer a:hover { text-decoration: underline; }
     keyPoints="0;1;1;0;0"
     calcMode="spline"
     keySplines="0.42 0 0.58 1;0 0 1 1;0.42 0 0.58 1;0 0 1 1"/>
-  <!-- Head -->
-  <circle cy="-28" r="9" fill="#f4a46a"/>
-  <!-- Body -->
-  <rect x="-5" y="-19" width="10" height="15" rx="3" fill="#d32f2f"/>
-  <!-- Arms -->
+  <!-- Body bob (hop on crutches) -->
   <g>
-    <animate attributeName="transform" values="rotate(0);rotate(15);rotate(-15);rotate(0)" dur=".45s" repeatCount="indefinite"/>
-    <line x1="-5" y1="-14" x2="-14" y2="-6"  stroke="#c27a50" stroke-width="3" stroke-linecap="round"/>
-    <line x1=" 5" y1="-14" x2=" 14" y2="-6"  stroke="#c27a50" stroke-width="3" stroke-linecap="round"/>
-  </g>
-  <!-- Legs -->
-  <g>
-    <animate attributeName="transform" values="rotate(0);rotate(-18);rotate(18);rotate(0)" dur=".45s" repeatCount="indefinite"/>
-    <line x1="-3" y1="-4" x2="-8"  y2="8" stroke="#1a237e" stroke-width="3" stroke-linecap="round"/>
-    <line x1=" 3" y1="-4" x2=" 8"  y2="8" stroke="#1a237e" stroke-width="3" stroke-linecap="round"/>
+    <animate attributeName="transform" values="translate(0,0);translate(0,-3);translate(0,0)" dur=".7s" repeatCount="indefinite"/>
+    <!-- Head: foto Emanuele in gara (con bandana già inclusa) -->
+    <image href="face.png" x="-14" y="-44" width="28" height="35"
+           clip-path="url(#face-clip)" preserveAspectRatio="xMidYMin meet"/>
+    <circle cy="-28" r="14" fill="none" stroke="rgba(0,0,0,.25)" stroke-width="1"/>
+    <!-- Body -->
+    <rect x="-5" y="-19" width="10" height="15" rx="3" fill="#d32f2f"/>
+    <!-- Crutch LEFT (swings forward on hop) -->
+    <g>
+      <animate attributeName="transform" values="rotate(-8,-6,-14);rotate(5,-6,-14);rotate(-8,-6,-14)" dur=".7s" repeatCount="indefinite"/>
+      <!-- Armrest -->
+      <line x1="-6" y1="-17" x2="-12" y2="-17" stroke="#8B5E14" stroke-width="2" stroke-linecap="round"/>
+      <!-- Shaft -->
+      <line x1="-6" y1="-17" x2="-20" y2="10" stroke="#8B5E14" stroke-width="2.5" stroke-linecap="round"/>
+      <!-- Grip -->
+      <line x1="-10" y1="-8" x2="-6" y2="-8" stroke="#8B5E14" stroke-width="2" stroke-linecap="round"/>
+    </g>
+    <!-- Crutch RIGHT (opposite phase) -->
+    <g>
+      <animate attributeName="transform" values="rotate(8,6,-14);rotate(-5,6,-14);rotate(8,6,-14)" dur=".7s" repeatCount="indefinite"/>
+      <!-- Armrest -->
+      <line x1="6" y1="-17" x2="12" y2="-17" stroke="#8B5E14" stroke-width="2" stroke-linecap="round"/>
+      <!-- Shaft -->
+      <line x1="6" y1="-17" x2="20" y2="10" stroke="#8B5E14" stroke-width="2.5" stroke-linecap="round"/>
+      <!-- Grip -->
+      <line x1="6" y1="-8" x2="10" y2="-8" stroke="#8B5E14" stroke-width="2" stroke-linecap="round"/>
+    </g>
+    <!-- Good leg (hops) -->
+    <g>
+      <animate attributeName="transform" values="rotate(0);rotate(-12);rotate(0)" dur=".7s" repeatCount="indefinite"/>
+      <line x1="-3" y1="-4" x2="-5" y2="8" stroke="#1a237e" stroke-width="3" stroke-linecap="round"/>
+    </g>
+    <!-- Injured leg (raised, with cast) -->
+    <g>
+      <animate attributeName="transform" values="rotate(20);rotate(35);rotate(20)" dur=".7s" repeatCount="indefinite"/>
+      <line x1="3" y1="-4" x2="9" y2="4" stroke="#1a237e" stroke-width="3" stroke-linecap="round"/>
+      <!-- Cast (white bandage) -->
+      <line x1="5" y1="-1" x2="9" y2="4" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".85"/>
+      <line x1="5" y1="-1" x2="9" y2="4" stroke="#e57373" stroke-width="1" stroke-linecap="round" stroke-dasharray="1.5,2"/>
+    </g>
   </g>
 </g>
 
@@ -844,10 +965,11 @@ footer a:hover { text-decoration: underline; }
   <div class="hero-sub"><?= $cfg['distance'] ?> &bull; <?= $cfg['route'] ?></div>
   <div class="hero-date"><?= $cfg['event_date'] ?></div>
   <div class="schedule">
-    <div class="pill">&#x1F319; <?= $cfg['time_start'] ?> &mdash; Partenza epica</div>
-    <div class="pill">&#x1F305; Dalle <?= $cfg['time_join'] ?> &mdash; Join the climb!</div>
+    <div class="pill">&#x1F3C3; <?= $cfg['time_start'] ?> &mdash; Partenza da Landarenca (6 salite&#x1F9B5;)</div>
+    <div class="pill">&#x1F91D; Dalle <?= $cfg['time_join'] ?> &mdash; Aggregati a me, salite gratis!</div>
     <div class="pill">&#x1F525; <?= $cfg['time_bbq'] ?> &mdash; Grigliata in vetta!</div>
   </div>
+  <div class="hero-note">&#x1F4AC; Niente teleferica? Vieni a corsa con me dalle <?= $cfg['time_join'] ?> &mdash; fai quante salite vuoi, poi BBQ!</div>
 </div>
 
 <div class="scroll-hint">
@@ -972,11 +1094,12 @@ footer a:hover { text-decoration: underline; }
 
       <!-- Climbs (shown only when "si") -->
       <div class="form-row" id="climbs-row">
+        <div class="alert alert-warn" style="margin-bottom:.8rem;">&#x1F9B5; <strong>Attenzione:</strong> causa problema agli adduttori, Emanuele farà <strong>max 6 salite</strong> (invece delle 11 previste). Adegua il tuo piano!</div>
         <label>Quante salite farai? <span class="optional">(0 = arrivi direttamente in vetta via funivia o cabinovia)</span></label>
         <div class="climbs-grid">
           <?php
-          $climbLabels = [0=>'Solo BBQ',1=>'1 birra',2=>'2 birre',3=>'gloria!',4=>'4x',5=>'5x',6=>'6x',7=>'7x',8=>'8x',9=>'9x',10=>'10x',11=>'ALL &#x1F947;'];
-          foreach (range(0, 11) as $n):
+          $climbLabels = [0=>'Solo BBQ',1=>'1 birra',2=>'2 birre',3=>'gloria!',4=>'4x',5=>'5x',6=>'ALL &#x1F947;'];
+          foreach (range(0, 6) as $n):
             $prev = intval($_POST['climbs'] ?? 0);
             $chk  = (!$success && $prev === $n) ? 'checked' : ($n === 0 ? 'checked' : '');
           ?>
@@ -985,6 +1108,32 @@ footer a:hover { text-decoration: underline; }
             <label for="cl-<?= $n ?>">
               <?= $n ?>
               <span class="sub"><?= strip_tags($climbLabels[$n]) ?></span>
+            </label>
+          </div>
+          <?php endforeach; ?>
+        </div>
+      </div>
+
+      <!-- Slots: in quali salite corri con Emanuele -->
+      <div class="form-row" id="slots-row">
+        <label>In quali salite corri con Emanuele? <span class="optional" id="slots-hint"></span></label>
+        <div class="slots-grid">
+          <?php
+          $prevSlots = $success ? [] : array_map('intval', (array)($_POST['slots'] ?? []));
+          foreach ($cfg['climb_slots'] as $sid => $slot):
+            $chk   = in_array($sid, $prevSlots) ? 'checked' : '';
+            $count = count($slotRoster[$sid]);
+            $names = $count > 0 ? implode(', ', $slotRoster[$sid]) : '';
+          ?>
+          <div class="slot-opt">
+            <input type="checkbox" name="slots[]" id="sl-<?= $sid ?>" value="<?= $sid ?>" <?= $chk ?>>
+            <label for="sl-<?= $sid ?>">
+              <span class="slot-time"><?= $slot['depart'] ?></span>
+              <span>&#x1F3C3; <?= $slot['label'] ?> &rarr; Landarenca <?= $slot['arrive'] ?></span>
+              <?php if ($count > 0): ?>
+                <span class="slot-riders">&#x1F91D; <?= $names ?></span>
+              <?php endif; ?>
+              <span class="slot-arrive">cima <?= $slot['arrive'] ?></span>
             </label>
           </div>
           <?php endforeach; ?>
@@ -1047,6 +1196,35 @@ footer a:hover { text-decoration: underline; }
   </div>
   <?php endif; ?>
 
+  <!-- SCHEDULE SALITE -->
+  <div class="section-title">&#x23F1;&#xFE0F; Programma salite — chi corre con Emanuele</div>
+  <div class="schedule-slots">
+    <?php foreach ($cfg['climb_slots'] as $sid => $slot):
+      $runners_slot = $slotRoster[$sid];
+      $count = count($runners_slot);
+    ?>
+    <div class="schedule-slot">
+      <div class="schedule-slot-time"><?= $slot['depart'] ?></div>
+      <div class="schedule-slot-names">
+        <strong><?= $slot['label'] ?></strong>
+        <?php if ($count > 0): ?>
+          &mdash; <?= htmlspecialchars(implode(', ', $runners_slot)) ?>
+        <?php else: ?>
+          &mdash; <em>nessuno ancora</em>
+        <?php endif; ?>
+      </div>
+      <?php if ($count > 0): ?>
+        <div class="schedule-slot-count">&#x1F3C3; <?= $count ?></div>
+      <?php endif; ?>
+    </div>
+    <?php endforeach; ?>
+    <div class="schedule-slot" style="border-color:var(--fire);background:#fff8f0">
+      <div class="schedule-slot-time" style="color:var(--fire)">12:00</div>
+      <div class="schedule-slot-names"><strong>BBQ in vetta</strong> &mdash; <em>tutti!</em></div>
+      <div style="font-size:1.3rem">&#x1F525;</div>
+    </div>
+  </div>
+
   <!-- GUEST LIST -->
   <div class="section-title" id="lista">&#x1F465; Chi c'&egrave;</div>
 
@@ -1077,6 +1255,11 @@ footer a:hover { text-decoration: underline; }
               <?php if ($r['climbs'] > 0): ?>
                 <span class="tag tag-fire">&#x1F3C3; <?= $r['climbs'] ?> salite</span>
                 <span class="tag tag-beer">&#x1F37A; <?= $r['climbs'] ?> birre</span>
+                <?php foreach (($r['slots'] ?? []) as $sid): ?>
+                  <?php if (isset($cfg['climb_slots'][$sid])): ?>
+                    <span class="tag" style="background:#e8f5e9;color:var(--forest)">&#x23F0; <?= $cfg['climb_slots'][$sid]['depart'] ?></span>
+                  <?php endif; ?>
+                <?php endforeach; ?>
               <?php else: ?>
                 <span class="tag">&#x1F37D;&#xFE0F; Solo BBQ</span>
               <?php endif; ?>
@@ -1130,14 +1313,44 @@ footer a:hover { text-decoration: underline; }
 })();
 
 // Show/hide form rows
-const radios     = document.querySelectorAll('input[name="coming"]');
-const climbsRow  = document.getElementById('climbs-row');
-const guestsRow  = document.getElementById('guests-row');
+const radios      = document.querySelectorAll('input[name="coming"]');
+const climbsRow   = document.getElementById('climbs-row');
+const slotsRow    = document.getElementById('slots-row');
+const guestsRow   = document.getElementById('guests-row');
+const slotsHint   = document.getElementById('slots-hint');
+const slotBoxes   = document.querySelectorAll('input[name="slots[]"]');
+
+function getMaxSlots() {
+  return parseInt(document.querySelector('input[name="climbs"]:checked')?.value ?? '0');
+}
+
+function syncSlotLimit() {
+  const max = getMaxSlots();
+  const checked = document.querySelectorAll('input[name="slots[]"]:checked');
+  slotsHint.textContent = max > 0 ? `(seleziona fino a ${max} slot)` : '';
+  slotBoxes.forEach(cb => {
+    cb.disabled = !cb.checked && checked.length >= max;
+    cb.closest('.slot-opt').style.opacity = cb.disabled ? '.4' : '1';
+  });
+}
+
 function syncRows() {
-  const val = document.querySelector('input[name="coming"]:checked')?.value;
+  const val    = document.querySelector('input[name="coming"]:checked')?.value;
+  const climbs = getMaxSlots();
   climbsRow.style.display = (val === 'si')                    ? 'block' : 'none';
   guestsRow.style.display = (val === 'si' || val === 'forse') ? 'block' : 'none';
+  const showSlots = val === 'si' && climbs > 0;
+  slotsRow.style.display = showSlots ? 'block' : 'none';
+  if (showSlots) syncSlotLimit();
 }
+
+// Reset slots when climb count changes
+document.querySelectorAll('input[name="climbs"]').forEach(r => r.addEventListener('change', () => {
+  slotBoxes.forEach(cb => { cb.checked = false; cb.disabled = false; cb.closest('.slot-opt').style.opacity = '1'; });
+  syncRows();
+}));
+
+slotBoxes.forEach(cb => cb.addEventListener('change', syncSlotLimit));
 radios.forEach(r => r.addEventListener('change', syncRows));
 syncRows();
 
